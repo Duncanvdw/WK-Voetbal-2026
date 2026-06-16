@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>World Cup 2026 — Live Score</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0f1e;--surface:#111827;--border:rgba(255,255,255,0.08);
+  --text:#f0f4ff;--muted:#6b7a99;--accent:#e8b84b;
+  --live:#ef4444;--goal:#22c55e;--font:'Inter',system-ui,sans-serif;
+}
+html,body{height:100%}
+body{
+  font-family:var(--font);background:var(--bg);color:var(--text);
+  min-height:100vh;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;padding:2rem 1rem;
+}
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;
+  background-image:
+    radial-gradient(1px 1px at 12% 18%,rgba(255,255,255,.35) 0%,transparent 100%),
+    radial-gradient(1px 1px at 44% 62%,rgba(255,255,255,.25) 0%,transparent 100%),
+    radial-gradient(1px 1px at 71% 28%,rgba(255,255,255,.3) 0%,transparent 100%),
+    radial-gradient(1px 1px at 89% 74%,rgba(255,255,255,.2) 0%,transparent 100%),
+    radial-gradient(1px 1px at 56% 8%,rgba(255,255,255,.28) 0%,transparent 100%),
+    radial-gradient(1px 1px at 24% 88%,rgba(255,255,255,.18) 0%,transparent 100%),
+    radial-gradient(1px 1px at 96% 14%,rgba(255,255,255,.32) 0%,transparent 100%),
+    radial-gradient(1px 1px at 4% 52%,rgba(255,255,255,.22) 0%,transparent 100%),
+    radial-gradient(1px 1px at 33% 40%,rgba(255,255,255,.15) 0%,transparent 100%),
+    radial-gradient(1px 1px at 78% 55%,rgba(255,255,255,.2) 0%,transparent 100%);
+}
+.wrap{position:relative;z-index:1;width:100%;max-width:500px}
+.header{text-align:center;margin-bottom:1.75rem}
+.trophy{font-size:2.2rem;display:block;margin-bottom:.4rem}
+.header h1{font-size:11px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--accent)}
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:20px;padding:2rem;position:relative;overflow:hidden;
+}
+.card-top-line{
+  position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);
+  opacity:0;transition:opacity .4s;
+}
+.card.live .card-top-line{opacity:1}
+.status-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem}
+.pill-live{
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);
+  color:#f87171;font-size:11px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;padding:4px 10px;border-radius:100px;
+}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--live);animation:blink 1.2s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.pill-ft,.pill-up{
+  display:inline-flex;align-items:center;gap:5px;
+  background:rgba(255,255,255,.06);border:1px solid var(--border);
+  color:var(--muted);font-size:11px;font-weight:500;padding:4px 10px;border-radius:100px;
+}
+.group-tag{font-size:12px;color:var(--muted)}
+.matchup{display:flex;align-items:center;justify-content:center;gap:.75rem;margin-bottom:1.25rem}
+.team{display:flex;flex-direction:column;align-items:center;gap:10px;flex:1}
+.flag{font-size:60px;line-height:1;filter:drop-shadow(0 4px 16px rgba(0,0,0,.5))}
+.team-name{font-size:14px;font-weight:500;color:var(--text);text-align:center}
+.score-mid{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:110px}
+.score-row{display:flex;align-items:center;gap:6px}
+.snum{
+  font-size:76px;font-weight:900;color:var(--text);line-height:1;
+  min-width:44px;text-align:center;
+}
+.snum.bump{animation:bump .4s ease-out}
+@keyframes bump{0%{transform:scale(1.45);color:var(--goal)}60%{transform:scale(.96)}100%{transform:scale(1)}}
+.ssep{font-size:44px;font-weight:300;color:var(--muted);line-height:1;margin-top:-6px}
+.venue{font-size:11px;color:var(--muted);text-align:center;margin-top:.25rem}
+.ko-time{font-size:26px;font-weight:700;color:var(--accent);text-align:center}
+.ko-date{font-size:11px;color:var(--muted);text-align:center;margin-top:2px}
+.goals-wrap{border-top:1px solid var(--border);padding-top:.875rem;margin-top:.75rem;display:flex;flex-direction:column;gap:5px}
+.goal-row{display:flex;align-items:center;gap:7px;font-size:13px}
+.g-min{color:var(--accent);font-weight:600;min-width:30px}
+.g-name{color:var(--text);font-weight:500}
+.g-team{color:var(--muted);font-size:12px}
+.g-new{animation:slidein .35s ease-out}
+@keyframes slidein{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+.foot{display:flex;align-items:center;justify-content:space-between;margin-top:1.1rem}
+.updated{font-size:11px;color:var(--muted)}
+.rbtn{
+  background:none;border:1px solid var(--border);color:var(--muted);
+  font-size:12px;font-weight:500;padding:5px 12px;border-radius:8px;
+  cursor:pointer;display:flex;align-items:center;gap:5px;
+  transition:border-color .2s,color .2s;font-family:var(--font);
+}
+.rbtn:hover{border-color:var(--accent);color:var(--accent)}
+.rbtn svg{transition:transform .5s}
+.rbtn.spin svg{transform:rotate(360deg)}
+#confetti{position:fixed;inset:0;pointer-events:none;z-index:99}
+.overlay{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  pointer-events:none;z-index:100;opacity:0;
+}
+.overlay.show{animation:ovl 3s ease-out forwards}
+@keyframes ovl{0%{opacity:0}8%{opacity:1}75%{opacity:1}100%{opacity:0}}
+.goal-shout{
+  display:flex;flex-direction:column;align-items:center;gap:.5rem;
+  animation:shout 3s ease-out forwards;
+}
+@keyframes shout{
+  0%{transform:scale(.4) rotate(-6deg);opacity:0}
+  14%{transform:scale(1.1) rotate(1deg);opacity:1}
+  24%{transform:scale(1) rotate(0)}
+  80%{opacity:1}100%{opacity:0}
+}
+.goal-word{font-size:84px;font-weight:900;color:var(--goal);text-shadow:0 0 40px rgba(34,197,94,.5);letter-spacing:-2px}
+.goal-who{font-size:18px;font-weight:600;color:var(--text)}
+.err{text-align:center;padding:1.5rem;color:var(--muted);font-size:14px;line-height:1.6}
+@media(max-width:400px){.flag{font-size:44px}.snum{font-size:60px}.card{padding:1.25rem}}
+</style>
+</head>
+<body>
+
+<canvas id="confetti"></canvas>
+<div class="overlay" id="overlay">
+  <div class="goal-shout">
+    <div class="goal-word">GOAL!</div>
+    <div class="goal-who" id="goalWho"></div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="header">
+    <span class="trophy">🏆</span>
+    <h1>FIFA World Cup 2026</h1>
+  </div>
+  <div class="card" id="card">
+    <div class="card-top-line"></div>
+    <div id="content"><div class="err">Loading…</div></div>
+  </div>
+  <div class="foot">
+    <span class="updated" id="upd">–</span>
+    <button class="rbtn" id="rbtn" onclick="load()">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M23 4v6h-6M1 20v-6h6"/>
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+      </svg>
+      Refresh
+    </button>
+  </div>
+</div>
+
+<script>
+const API = 'https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json';
+
+const FLAGS = {
+  'Mexico':'🇲🇽','South Africa':'🇿🇦','South Korea':'🇰🇷','Czech Republic':'🇨🇿',
+  'Canada':'🇨🇦','Bosnia & Herzegovina':'🇧🇦','Qatar':'🇶🇦','Switzerland':'🇨🇭',
+  'USA':'🇺🇸','Paraguay':'🇵🇾','Australia':'🇦🇺','Turkey':'🇹🇷',
+  'Brazil':'🇧🇷','Morocco':'🇲🇦','Croatia':'🇭🇷','Belgium':'🇧🇪',
+  'Argentina':'🇦🇷','Algeria':'🇩🇿','Austria':'🇦🇹','Jordan':'🇯🇴',
+  'France':'🇫🇷','Senegal':'🇸🇳','Iraq':'🇮🇶','Norway':'🇳🇴',
+  'Portugal':'🇵🇹','DR Congo':'🇨🇩','Uzbekistan':'🇺🇿','Colombia':'🇨🇴',
+  'England':'🏴󠁧󠁢󠁥󠁮󠁧󠁿','Netherlands':'🇳🇱','Sweden':'🇸🇪','Germany':'🇩🇪',
+  'Spain':'🇪🇸','Cape Verde':'🇨🇻','Egypt':'🇪🇬','Saudi Arabia':'🇸🇦',
+  'Uruguay':'🇺🇾','Iran':'🇮🇷','New Zealand':'🇳🇿','Ghana':'🇬🇭',
+  'Panama':'🇵🇦','Ivory Coast':'🇨🇮','Scotland':'🏴󠁧󠁢󠁳󠁣󠁴󠁿','Haiti':'🇭🇹',
+  'Japan':'🇯🇵','Ecuador':'🇪🇨','Cameroon':'🇨🇲','Serbia':'🇷🇸',
+  'Denmark':'🇩🇰','Tunisia':'🇹🇳','Poland':'🇵🇱','Nigeria':'🇳🇬',
+  'Ukraine':'🇺🇦','Romania':'🇷🇴','Senegal':'🇸🇳','Mali':'🇲🇱',
+  'Honduras':'🇭🇳','Venezuela':'🇻🇪','Jamaica':'🇯🇲','South Korea':'🇰🇷',
+};
+
+function flag(name){ return FLAGS[name] || '🏳'; }
+
+// Parse "HH:MM UTC±N" into a JS Date for a given date string
+function parseKickoff(dateStr, timeStr) {
+  if (!timeStr) return new Date(dateStr + 'T12:00:00Z');
+  const m = timeStr.match(/(\d+):(\d+)\s+UTC([+-]\d+)/);
+  if (!m) return new Date(dateStr + 'T12:00:00Z');
+  const h = parseInt(m[1]), min = parseInt(m[2]), tz = parseInt(m[3]);
+  const utcH = h - tz;
+  const pad = n => String(n).padStart(2,'0');
+  return new Date(`${dateStr}T${pad(utcH)}:${pad(min)}:00Z`);
+}
+
+let prevH = null, prevA = null, timer = null, audioCtx = null;
+
+function ac() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function cheer() {
+  try {
+    const ctx = ac();
+    if (ctx.state === 'suspended') ctx.resume();
+    const now = ctx.currentTime;
+    // crowd voices
+    for (let i = 0; i < 120; i++) {
+      const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+      f.type = 'bandpass'; f.frequency.value = 400 + Math.random()*1400; f.Q.value = .8;
+      o.connect(f); f.connect(g); g.connect(ctx.destination);
+      const t = now + Math.random() * .6;
+      o.frequency.value = 150 + Math.random()*1800;
+      o.type = ['sine','triangle','sawtooth'][Math.floor(Math.random()*3)];
+      const v = .015 + Math.random()*.035;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(v, t+.04);
+      g.gain.exponentialRampToValueAtTime(.0001, t + .5 + Math.random()*2.2);
+      o.start(t); o.stop(t+3.5);
+    }
+    // low rumble
+    const buf = ctx.createBuffer(1, ctx.sampleRate*2.8, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,.4);
+    const s = ctx.createBufferSource(), ng = ctx.createGain(), lp = ctx.createBiquadFilter();
+    lp.type='lowpass'; lp.frequency.value=350;
+    s.buffer=buf; s.connect(lp); lp.connect(ng); ng.connect(ctx.destination);
+    ng.gain.setValueAtTime(.2,now); ng.gain.exponentialRampToValueAtTime(.001,now+2.8);
+    s.start(now);
+  } catch(e){}
+}
+
+function confetti() {
+  const cv = document.getElementById('confetti');
+  cv.width = window.innerWidth; cv.height = window.innerHeight;
+  const cols = ['#e8b84b','#22c55e','#3b82f6','#ef4444','#a855f7','#f97316','#fff'];
+  const ps = Array.from({length:200},()=>({
+    x: Math.random()*cv.width, y:-10,
+    w:5+Math.random()*9, h:3+Math.random()*7,
+    r:Math.random()*Math.PI*2, dr:(Math.random()-.5)*.25,
+    vx:(Math.random()-.5)*7, vy:2+Math.random()*5,
+    grav:.1+Math.random()*.12, col:cols[Math.floor(Math.random()*cols.length)], op:1
+  }));
+  let fr=0;
+  (function draw(){
+    const c=cv.getContext('2d'); c.clearRect(0,0,cv.width,cv.height);
+    ps.forEach(p=>{
+      c.save(); c.globalAlpha=p.op; c.translate(p.x,p.y); c.rotate(p.r);
+      c.fillStyle=p.col; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore();
+      p.x+=p.vx; p.y+=p.vy; p.vy+=p.grav; p.r+=p.dr;
+      if(fr>90) p.op=Math.max(0,p.op-.014);
+    });
+    fr++;
+    if(fr<200&&ps.some(p=>p.op>0)) requestAnimationFrame(draw);
+    else c.clearRect(0,0,cv.width,cv.height);
+  })();
+}
+
+function goalCelebration(name) {
+  document.getElementById('goalWho').textContent = name || '';
+  const ov = document.getElementById('overlay');
+  ov.className='overlay'; void ov.offsetWidth; ov.className='overlay show';
+  setTimeout(()=>ov.className='overlay', 3100);
+  cheer(); confetti();
+}
+
+function findMatch(matches) {
+  const now = new Date();
+  // 1. match in progress (kicked off <120 min ago, no score yet means still live or just started)
+  for (const m of matches) {
+    const ko = parseKickoff(m.date, m.time);
+    const diff = (now - ko) / 60000;
+    if (diff >= -5 && diff < 130 && !m.score) return { m, state:'live', ko };
+  }
+  // 2. most recently completed (has score, kicked off in the past)
+  let latest = null, latestKo = null;
+  for (const m of matches) {
+    if (!m.score) continue;
+    const ko = parseKickoff(m.date, m.time);
+    if (ko <= now && (!latestKo || ko > latestKo)) { latest = m; latestKo = ko; }
+  }
+  if (latest) return { m: latest, state:'ft', ko: latestKo };
+  // 3. next upcoming
+  let next = null, nextKo = null;
+  for (const m of matches) {
+    const ko = parseKickoff(m.date, m.time);
+    if (ko > now && (!nextKo || ko < nextKo)) { next = m; nextKo = ko; }
+  }
+  if (next) return { m: next, state:'upcoming', ko: nextKo };
+  return null;
+}
+
+function render(result) {
+  const card = document.getElementById('card');
+  const content = document.getElementById('content');
+  const { m, state, ko } = result;
+  const h = flag(m.team1), a = flag(m.team2);
+
+  if (state === 'upcoming') {
+    card.className = 'card';
+    const t = ko.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'});
+    const d = ko.toLocaleDateString('nl-NL',{weekday:'long',day:'numeric',month:'long'});
+    content.innerHTML = `
+      <div class="status-row">
+        <div class="pill-up">Upcoming · ${m.group}</div>
+      </div>
+      <div class="matchup">
+        <div class="team"><div class="flag">${h}</div><div class="team-name">${m.team1}</div></div>
+        <div class="score-mid"><div class="ko-time">${t}</div><div class="ko-date">${d}</div></div>
+        <div class="team"><div class="flag">${a}</div><div class="team-name">${m.team2}</div></div>
+      </div>
+      <div class="venue">${m.ground || ''}</div>`;
+    return;
+  }
+
+  const hs = m.score ? m.score.ft[0] : 0;
+  const as = m.score ? m.score.ft[1] : 0;
+  const isLive = state === 'live';
+
+  // Detect goal
+  if (prevH !== null && prevA !== null) {
+    if (hs > prevH) goalCelebration(`${h} ${m.team1}`);
+    else if (as > prevA) goalCelebration(`${a} ${m.team2}`);
+  }
+  prevH = hs; prevA = as;
+
+  card.className = isLive ? 'card live' : 'card';
+
+  const statusHtml = isLive
+    ? `<div class="pill-live"><div class="dot"></div>Live</div>`
+    : `<div class="pill-ft">Full time</div>`;
+
+  // Build goal list
+  const goals1 = m.goals1 || [];
+  const goals2 = m.goals2 || [];
+  const allGoals = [
+    ...goals1.map(g => ({...g, team:m.team1, flag:h})),
+    ...goals2.map(g => ({...g, team:m.team2, flag:a}))
+  ].sort((a,b)=> parseInt(a.minute) - parseInt(b.minute));
+
+  const goalsHtml = allGoals.length ? `
+    <div class="goals-wrap">
+      ${allGoals.map(g=>`
+        <div class="goal-row">
+          <span>⚽</span>
+          <span class="g-min">${g.minute}'</span>
+          <span class="g-name">${g.name}</span>
+          <span class="g-team">${g.flag} ${g.team}</span>
+        </div>`).join('')}
+    </div>` : '';
+
+  content.innerHTML = `
+    <div class="status-row">
+      ${statusHtml}
+      <span class="group-tag">${m.group || ''}</span>
+    </div>
+    <div class="matchup">
+      <div class="team"><div class="flag">${h}</div><div class="team-name">${m.team1}</div></div>
+      <div class="score-mid">
+        <div class="score-row">
+          <div class="snum" id="sh">${hs}</div>
+          <div class="ssep">–</div>
+          <div class="snum" id="sa">${as}</div>
+        </div>
+        <div class="venue">${(m.ground||'').split(' (')[0]}</div>
+      </div>
+      <div class="team"><div class="flag">${a}</div><div class="team-name">${m.team2}</div></div>
+    </div>
+    ${goalsHtml}`;
+}
+
+async function load() {
+  const btn = document.getElementById('rbtn');
+  btn.classList.add('spin');
+  try {
+    const r = await fetch(API + '?t=' + Date.now());
+    if (!r.ok) throw new Error('fetch failed');
+    const data = await r.json();
+    const result = findMatch(data.matches);
+    if (!result) {
+      document.getElementById('content').innerHTML = '<div class="err">No matches found right now.</div>';
+    } else {
+      render(result);
+    }
+    const now = new Date();
+    document.getElementById('upd').textContent =
+      'Updated ' + now.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  } catch(e) {
+    document.getElementById('content').innerHTML =
+      `<div class="err">Could not load scores.<br><small>${e.message}</small></div>`;
+  }
+  btn.classList.remove('spin');
+  clearInterval(timer);
+  timer = setInterval(load, 45000);
+}
+
+load();
+window.addEventListener('resize',()=>{
+  const c=document.getElementById('confetti');
+  c.width=window.innerWidth; c.height=window.innerHeight;
+});
+</script>
+</body>
+</html>
