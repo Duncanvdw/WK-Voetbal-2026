@@ -123,17 +123,50 @@ body::before{
   position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
   pointer-events:none;z-index:100;opacity:0;
 }
-.overlay.show{animation:ovl 3s ease-out forwards}
-@keyframes ovl{0%{opacity:0}8%{opacity:1}75%{opacity:1}100%{opacity:0}}
-.goal-shout{display:flex;flex-direction:column;align-items:center;gap:.5rem;animation:shout 3s ease-out forwards}
-@keyframes shout{
-  0%{transform:scale(.4) rotate(-6deg);opacity:0}
-  14%{transform:scale(1.1) rotate(1deg);opacity:1}
-  24%{transform:scale(1) rotate(0)}
-  80%{opacity:1}100%{opacity:0}
+.overlay.show{animation:ovl 10s ease-out forwards}
+@keyframes ovl{0%{opacity:0}4%{opacity:1}80%{opacity:1}100%{opacity:0}}
+.overlay-bg{position:absolute;inset:0;opacity:0;}
+.overlay.show .overlay-bg{animation:bgflash 10s forwards}
+@keyframes bgflash{
+  0%  {opacity:0}
+  3%  {opacity:0.55}
+  8%  {opacity:0.28}
+  15% {opacity:0.42}
+  22% {opacity:0.22}
+  30% {opacity:0.38}
+  40% {opacity:0.2}
+  52% {opacity:0.32}
+  65% {opacity:0.15}
+  80% {opacity:0.08}
+  100%{opacity:0}
 }
-.goal-word{font-size:84px;font-weight:900;color:var(--goal);text-shadow:0 0 40px rgba(34,197,94,.5);letter-spacing:-2px}
-.goal-who{font-size:18px;font-weight:600;color:var(--text)}
+.goal-shout{
+  position:relative;z-index:1;
+  display:flex;flex-direction:column;align-items:center;gap:.75rem;
+  animation:shout 10s ease-out forwards;text-align:center;
+}
+@keyframes shout{
+  0%  {transform:scale(.3) rotate(-8deg);opacity:0}
+  6%  {transform:scale(1.15) rotate(2deg);opacity:1}
+  10% {transform:scale(1) rotate(0deg)}
+  80% {transform:scale(1);opacity:1}
+  100%{transform:scale(1.04);opacity:0}
+}
+.goal-word{
+  font-size:100px;font-weight:900;letter-spacing:-3px;color:#22c55e;
+  text-shadow:0 0 60px currentColor,0 4px 20px rgba(0,0,0,.5);
+  animation:gcolor 10s forwards;
+}
+@keyframes gcolor{
+  0%  {color:#22c55e}
+  18% {color:#fff}
+  36% {color:#22c55e}
+  54% {color:#fff}
+  72% {color:#22c55e}
+  100%{color:#22c55e}
+}
+.goal-who{font-size:22px;font-weight:600;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.6)}
+.goal-minute{font-size:14px;font-weight:500;color:rgba(255,255,255,.7);margin-top:-.25rem}
 .src-badge{
   font-size:10px;color:var(--muted);text-align:center;margin-top:.4rem;
   opacity:.6;letter-spacing:.04em;
@@ -146,9 +179,11 @@ body::before{
 
 <canvas id="confetti"></canvas>
 <div class="overlay" id="overlay">
+  <div class="overlay-bg" id="overlayBg"></div>
   <div class="goal-shout">
     <div class="goal-word">GOAL!</div>
     <div class="goal-who" id="goalWho"></div>
+    <div class="goal-minute" id="goalMinute"></div>
   </div>
 </div>
 
@@ -195,7 +230,34 @@ const FLAGS = {
 };
 const flag = n => FLAGS[n] || '🏳';
 
-// ─── State ────────────────────────────────────────────────────────────────────
+// ─── Country colors ───────────────────────────────────────────────────────────
+const TEAM_COLORS = {
+  'Netherlands':'#FF6600','France':'#002395','Brazil':'#009c3b',
+  'Germany':'#000000','Argentina':'#74ACDF','Spain':'#AA151B',
+  'England':'#CF081F','Portugal':'#006600','Belgium':'#EF3340',
+  'Italy':'#003DA5','Croatia':'#FF0000','Netherlands':'#FF6600',
+  'Senegal':'#00853F','Morocco':'#C1272D','Nigeria':'#008751',
+  'Cameroon':'#007A5E','South Africa':'#007A4D','Ghana':'#006B3F',
+  'Egypt':'#CE1126','Tunisia':'#E70013','Algeria':'#006233',
+  'DR Congo':'#007FFF','Mali':'#14B53A','Cape Verde':'#003893',
+  'USA':'#B22234','United States':'#B22234','Mexico':'#006847',
+  'Canada':'#FF0000','Argentina':'#74ACDF','Colombia':'#FCD116',
+  'Uruguay':'#5EB6E4','Chile':'#D52B1E','Ecuador':'#FFD100',
+  'Paraguay':'#D52B1E','Venezuela':'#CF142B','Bolivia':'#D52B1E',
+  'Panama':'#005293','Honduras':'#0073CF','Jamaica':'#000000',
+  'Japan':'#BC002D','South Korea':'#003478','Australia':'#00008B',
+  'Iran':'#239F40','Saudi Arabia':'#006C35','Iraq':'#CE1126',
+  'Jordan':'#007A3D','Uzbekistan':'#1EB53A','Qatar':'#8D1B3D',
+  'New Zealand':'#00247D','Switzerland':'#FF0000','Czech Republic':'#D7141A',
+  'Poland':'#DC143C','Serbia':'#C6363C','Croatia':'#FF0000',
+  'Romania':'#002B7F','Ukraine':'#005BBB','Austria':'#ED2939',
+  'Denmark':'#C60C30','Sweden':'#006AA7','Norway':'#EF2B2D',
+  'Scotland':'#003DA5','Wales':'#C8102E','Turkey':'#E30A17',
+  'Bosnia & Herzegovina':'#002395','Slovenia':'#003DA5','Slovakia':'#EE1C25',
+  'Greece':'#0D5EAF','Albania':'#E41E20','Kosovo':'#244AA5',
+  'Haiti':'#00209F','Sweden':'#006AA7',
+};
+function teamColor(name) { return TEAM_COLORS[name] || '#22c55e'; }
 let manualH = null, manualA = null;  // null = use API data
 let prevH = null, prevA = null;
 let currentHome = '', currentAway = '';
@@ -310,11 +372,12 @@ function cheer() {
 }
 
 // ─── Confetti ─────────────────────────────────────────────────────────────────
-function confetti() {
+function confetti(teamColor) {
   const cv = document.getElementById('confetti');
   cv.width=window.innerWidth; cv.height=window.innerHeight;
-  const cols=['#e8b84b','#22c55e','#3b82f6','#ef4444','#a855f7','#f97316','#fff'];
-  const ps=Array.from({length:200},()=>({
+  const base = teamColor || '#22c55e';
+  const cols=[base, '#ffffff', '#e8b84b', base+'cc', '#fff', base, '#22c55e', '#fff'];
+  const ps=Array.from({length:220},()=>({
     x:Math.random()*cv.width,y:-10,w:5+Math.random()*9,h:3+Math.random()*7,
     r:Math.random()*Math.PI*2,dr:(Math.random()-.5)*.25,
     vx:(Math.random()-.5)*7,vy:2+Math.random()*5,
@@ -336,12 +399,19 @@ function confetti() {
 }
 
 // ─── Goal celebration ─────────────────────────────────────────────────────────
-function celebrate(teamName) {
+function celebrate(teamName, rawName) {
+  const color = teamColor(rawName || teamName);
   document.getElementById('goalWho').textContent = teamName;
-  const ov=document.getElementById('overlay');
-  ov.className='overlay'; void ov.offsetWidth; ov.className='overlay show';
-  setTimeout(()=>ov.className='overlay',3200);
-  cheer(); confetti();
+  document.getElementById('goalMinute').textContent = '';
+  // Set country color on the background
+  const bg = document.getElementById('overlayBg');
+  bg.style.background = `radial-gradient(ellipse at center, ${color} 0%, ${color}88 40%, transparent 75%)`;
+  // Also tint the goal word to match
+  document.querySelector('.goal-word').style.textShadow = `0 0 60px ${color}, 0 4px 20px rgba(0,0,0,.5)`;
+  const ov = document.getElementById('overlay');
+  ov.className = 'overlay'; void ov.offsetWidth; ov.className = 'overlay show';
+  setTimeout(() => ov.className = 'overlay', 10200);
+  cheer(); confetti(color);
 }
 
 // ─── Bump animation ──────────────────────────────────────────────────────────
@@ -358,11 +428,11 @@ function bump(id) {
 function adjustScore(side, delta) {
   if (side === 'home') {
     manualH = Math.max(0, (manualH ?? prevH ?? 0) + delta);
-    if (delta > 0) { bump('sh'); celebrate(flag(currentHome)+' '+currentHome); }
+    if (delta > 0) { bump('sh'); celebrate(flag(currentHome)+' '+currentHome, currentHome); }
     document.getElementById('sh').textContent = manualH;
   } else {
     manualA = Math.max(0, (manualA ?? prevA ?? 0) + delta);
-    if (delta > 0) { bump('sa'); celebrate(flag(currentAway)+' '+currentAway); }
+    if (delta > 0) { bump('sa'); celebrate(flag(currentAway)+' '+currentAway, currentAway); }
     document.getElementById('sa').textContent = manualA;
   }
 }
@@ -460,8 +530,8 @@ function renderMatch(m) {
 
   // Detect goals from API (only when not overridden manually)
   if (manualH === null && manualA === null) {
-    if (prevH !== null && hs > prevH) { celebrate(hf+' '+m.home); bump('sh'); }
-    if (prevA !== null && as > prevA) { celebrate(af+' '+m.away); bump('sa'); }
+    if (prevH !== null && hs > prevH) { celebrate(hf+' '+m.home, m.home); bump('sh'); }
+    if (prevA !== null && as > prevA) { celebrate(af+' '+m.away, m.away); bump('sa'); }
   }
   prevH = hs; prevA = as;
 
