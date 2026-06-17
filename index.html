@@ -629,6 +629,16 @@ function parseESPN(data) {
 function renderMatch(m) {
   const card = document.getElementById('card');
   const content = document.getElementById('content');
+
+  // If the match changed, reset everything so manual overrides and prev scores don't bleed over
+  const matchKey = m.home + '|' + m.away;
+  if (matchKey !== currentHome + '|' + currentAway) {
+    manualH = null;
+    manualA = null;
+    prevH = null;
+    prevA = null;
+  }
+
   currentHome = m.home;
   currentAway = m.away;
 
@@ -636,7 +646,8 @@ function renderMatch(m) {
   const hs = manualH !== null ? manualH : m.homeScore;
   const as = manualA !== null ? manualA : m.awayScore;
 
-  // Detect goals from API (only when not overridden manually)
+  // Detect goals from API scores (only when not overridden manually)
+  // Use goals.length as a fallback detector too, in case score doesn't update
   if (manualH === null && manualA === null) {
     if (prevH !== null && hs > prevH) { celebrate(hf+' '+m.home, m.home); bump('sh'); }
     if (prevA !== null && as > prevA) { celebrate(af+' '+m.away, m.away); bump('sa'); }
