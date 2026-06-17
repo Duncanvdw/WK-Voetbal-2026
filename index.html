@@ -535,6 +535,46 @@ async function fetchMatches() {
   return [];
 }
 
+// ESPN game IDs start at 760415 for match 1 (Mexico vs South Africa, Jun 11)
+const ESPN_BASE_ID = 760414; // 760415 - 1, so index 0 = 760415
+
+async function fetchESPNSummary(matchIndex) {
+  const gameId = ESPN_BASE_ID + matchIndex + 1;
+  const urls = [
+    `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/summary?event=${gameId}`,
+    `https://corsproxy.io/?${encodeURIComponent(`https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/summary?event=${gameId}`)}`,
+  ];
+  for (const url of urls) {
+    try {
+      const r = await fetch(url + '&t=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) continue;
+      const data = await r.json();
+      const comp = data.header?.competitions?.[0];
+      if (!comp) continue;
+      const home = comp.competitors?.find(c => c.homeAway === 'home');
+      const away = comp.competitors?.find(c => c.homeAway === 'away');
+      const statusName = comp.status?.type?.name || '';
+      const clock = comp.status?.displayClock || '';
+      debugLog(`ESPN summary gameId=${gameId}: ${home?.team?.displayName} ${home?.score}-${away?.score} ${away?.team?.displayName} [${statusName}] ${clock}`);
+      return {
+        homeScore: parseInt(home?.score) || 0,
+        awayScore: parseInt(away?.score) || 0,
+        clock,
+        statusName,
+        goals: (comp.details || [])
+          .filter(d => d.scoreValue > 0)
+          .map(d => ({
+            minute: d.clock?.displayValue || '?',
+            name: d.athletesInvolved?.[0]?.displayName || '',
+            team: d.team?.displayName || '',
+            teamFlag: flag(d.team?.displayName || '')
+          }))
+      };
+    } catch(e) { debugLog(`ESPN summary error: ${e.message}`); continue; }
+  }
+  return null;
+}
+
 // ─── Pick the best match to show ─────────────────────────────────────────────
 function pickMatch(matches) {
   const now = Date.now();
@@ -542,7 +582,8 @@ function pickMatch(matches) {
 
   let best = null, bestScore = -Infinity;
 
-  for (const m of matches) {
+  for (let idx = 0; idx < matches.length; idx++) {
+    const m = matches[idx];
     if (!m.date || !m.time) continue;
     const ko = parseKickoff(m.date, m.time).getTime();
     const end = ko + MATCH_DURATION;
@@ -559,7 +600,7 @@ function pickMatch(matches) {
       score = -(ko - now) / 1000; // upcoming, prefer soonest
     }
 
-    if (score > bestScore) { bestScore = score; best = { m, ko, score }; }
+    if (score > bestScore) { bestScore = score; best = { m, ko, score, idx }; }
   }
   return best;
 }
@@ -629,9 +670,24 @@ async function fetchAndParseMatch() {
   const picked = pickMatch(matches);
   if (!picked) return null;
 
-  const { m, ko } = picked;
-  debugLog('Picked: ' + m.team1 + ' vs ' + m.team2 + ' ko=' + new Date(ko).toISOString());
-  return parseMatch(m, ko);
+  const { m, ko, idx } = picked;
+  debugLog('Picked: ' + m.team1 + ' vs ' + m.team2 + ' ko=' + new Date(ko).toISOString() + ' idx=' + idx);
+
+  const result = parseMatch(m, ko);
+
+  // If match is live or recently finished, try ESPN summary for real-time score
+  if (result.isLive || result.isHT || result.isFT) {
+    const espn = await fetchESPNSummary(idx);
+    if (espn) {
+      result.homeScore = espn.homeScore;
+      result.awayScore = espn.awayScore;
+      if (espn.clock) result.clock = espn.clock;
+      if (espn.goals && espn.goals.length) result.goals = espn.goals;
+      debugLog('ESPN scores applied: ' + espn.homeScore + '-' + espn.awayScore);
+    }
+  }
+
+  return result;
 }
 
 // ─── Render ───────────────────────────────────────────────────────────────────
