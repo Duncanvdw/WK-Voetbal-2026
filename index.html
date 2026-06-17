@@ -517,10 +517,14 @@ async function fetchESPN() {
   const bust = '&t=' + Date.now();
 
   const base = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard';
+  // Also compute today in US Eastern time (UTC-4 in summer), since ESPN uses ET dates
+  const etNow = new Date(Date.now() - 4*60*60*1000);
+  const etDate = etNow.getUTCFullYear().toString() + pad(etNow.getUTCMonth()+1) + pad(etNow.getUTCDate());
   const urls = [
-    base + '?limit=20' + bust,
+    base + '?dates=' + etDate + '&limit=20' + bust,
     base + '?dates=' + dateRange + '&limit=20' + bust,
-    'https://corsproxy.io/?' + encodeURIComponent(base + '?limit=20'),
+    base + '?limit=20' + bust,
+    'https://corsproxy.io/?' + encodeURIComponent(base + '?dates=' + etDate + '&limit=20'),
   ];
 
   for (const url of urls) {
@@ -564,10 +568,18 @@ function parseESPN(data) {
     let score = 0;
     // Strict tiers: live (3000+) > half-time (2000+) > finished (1000+) > upcoming (negative)
     // Within finished matches, prefer the most recent one (largest ko value)
-    if (statusName === 'STATUS_IN_PROGRESS') score = 3000 + ko;
-    else if (statusName === 'STATUS_HALFTIME') score = 2000 + ko;
-    else if (statusName === 'STATUS_FINAL') score = 1000 + ko / 1e12; // tiny delta so most-recent FT wins
+    // ESPN uses various status names - cover all live variants
+    const isLiveStatus = ['STATUS_IN_PROGRESS', 'STATUS_IN_PROGRESS_2', 'STATUS_SECOND_HALF',
+      'STATUS_FIRST_HALF', 'STATUS_EXTRA_TIME', 'STATUS_PENALTY'].includes(statusName);
+    const isHTStatus = statusName === 'STATUS_HALFTIME';
+    const isFTStatus = ['STATUS_FINAL', 'STATUS_FULL_TIME', 'STATUS_FT'].includes(statusName);
+
+    if (isLiveStatus) score = 3000 + ko;
+    else if (isHTStatus) score = 2000 + ko;
+    else if (isFTStatus) score = 1000 + ko / 1e12;
     else score = -(ko - now)/1000; // upcoming: higher = sooner
+
+    debugLog('  status raw: [' + statusName + '] -> score tier: ' + (isLiveStatus?'LIVE':isHTStatus?'HT':isFTStatus?'FT':'upcoming'));
 
     if (score > bestScore) { bestScore = score; best = { ev, comp }; }
   }
@@ -598,10 +610,11 @@ function parseESPN(data) {
     away: away?.team?.displayName || '',
     homeScore: parseInt(home?.score || 0),
     awayScore: parseInt(away?.score || 0),
-    isLive: statusName === 'STATUS_IN_PROGRESS',
+    isLive: ['STATUS_IN_PROGRESS','STATUS_IN_PROGRESS_2','STATUS_SECOND_HALF',
+      'STATUS_FIRST_HALF','STATUS_EXTRA_TIME','STATUS_PENALTY'].includes(statusName),
     isHT: statusName === 'STATUS_HALFTIME',
-    isFT: statusName === 'STATUS_FINAL',
-    isUpcoming: statusName === 'STATUS_SCHEDULED',
+    isFT: ['STATUS_FINAL','STATUS_FULL_TIME','STATUS_FT'].includes(statusName),
+    isUpcoming: ['STATUS_SCHEDULED','STATUS_PRE'].includes(statusName),
     clock,
     period,
     group: ev.season?.slug || '',
