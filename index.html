@@ -506,123 +506,132 @@ function debugLog(msg) {
   console.log('[WC]', msg);
 }
 
-async function fetchESPN() {
-  // Fetch without date filter so ESPN returns whatever is live/most recent.
-  // Also try a yesterday-today date range in case a match started before midnight UTC.
-  const pad = n => String(n).padStart(2,'0');
-  const fmtDate = d => d.getUTCFullYear().toString() + pad(d.getUTCMonth()+1) + pad(d.getUTCDate());
-  const todayUTC = new Date();
-  const yesterdayUTC = new Date(Date.now() - 86400000);
-  const dateRange = fmtDate(yesterdayUTC) + '-' + fmtDate(todayUTC);
-  const bust = '&t=' + Date.now();
-
-  const base = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard';
-  // Also compute today in US Eastern time (UTC-4 in summer), since ESPN uses ET dates
-  const etNow = new Date(Date.now() - 4*60*60*1000);
-  const etDate = etNow.getUTCFullYear().toString() + pad(etNow.getUTCMonth()+1) + pad(etNow.getUTCDate());
-  const urls = [
-    base + '?dates=' + etDate + '&limit=20' + bust,
-    base + '?dates=' + dateRange + '&limit=20' + bust,
-    base + '?limit=20' + bust,
-    'https://corsproxy.io/?' + encodeURIComponent(base + '?dates=' + etDate + '&limit=20'),
-  ];
-
-  for (const url of urls) {
-    try {
-      debugLog('Trying: ' + url.substring(0, 90));
-      const r = await fetch(url, {cache:'no-store'});
-      if (!r.ok) { debugLog('HTTP ' + r.status); continue; }
-      const data = await r.json();
-      const events = data.events || [];
-      debugLog('Got ' + events.length + ' events');
-      events.forEach(ev => {
-        const comp = ev.competitions?.[0];
-        const status = comp?.status?.type?.name || '?';
-        const home = comp?.competitors?.find(c=>c.homeAway==='home')?.team?.displayName || '?';
-        const away = comp?.competitors?.find(c=>c.homeAway==='away')?.team?.displayName || '?';
-        const hs = comp?.competitors?.find(c=>c.homeAway==='home')?.score || 0;
-        const as = comp?.competitors?.find(c=>c.homeAway==='away')?.score || 0;
-        debugLog('  ' + home + ' ' + hs + '-' + as + ' ' + away + ' [' + status + ']');
-      });
-      const parsed = parseESPN(data);
-      if (parsed) debugLog('Selected: ' + parsed.home + ' vs ' + parsed.away + ' [live:' + parsed.isLive + ']');
-      return parsed;
-    } catch(e) { debugLog('Error: ' + e.message); continue; }
-  }
-  return null;
+// ─── Time helpers ─────────────────────────────────────────────────────────────
+// Parse "HH:MM UTC±X" into a UTC Date on a given date string "YYYY-MM-DD"
+function parseKickoff(dateStr, timeStr) {
+  // timeStr e.g. "15:00 UTC-5" or "20:00 UTC-6"
+  const [timePart, tzPart] = timeStr.split(' ');
+  const [hh, mm] = timePart.split(':').map(Number);
+  const offset = parseInt(tzPart.replace('UTC', '')) || 0; // e.g. -5
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  // UTC time = local time - offset
+  return new Date(Date.UTC(y, mo - 1, d, hh - offset, mm));
 }
 
-function parseESPN(data) {
-  const events = data.events || [];
-  if (!events.length) return null;
+// ─── Fetch match data from openfootball (updated ~daily, free/no-auth) ────────
+async function fetchMatches() {
+  const URLS = [
+    'https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json',
+    'https://corsproxy.io/?' + encodeURIComponent('https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json'),
+  ];
+  for (const url of URLS) {
+    try {
+      const r = await fetch(url, { cache: 'no-store' });
+      if (!r.ok) continue;
+      const data = await r.json();
+      return data.matches || [];
+    } catch(e) { debugLog('fetch error: ' + e.message); continue; }
+  }
+  return [];
+}
 
-  // Priority: in-progress > most recently started > upcoming
+// ─── Pick the best match to show ─────────────────────────────────────────────
+function pickMatch(matches) {
   const now = Date.now();
+  const MATCH_DURATION = 115 * 60 * 1000; // ~115 min including HT
+
   let best = null, bestScore = -Infinity;
 
-  for (const ev of events) {
-    const comp = ev.competitions?.[0];
-    if (!comp) continue;
-    const statusName = comp.status?.type?.name || '';
-    const ko = new Date(comp.startDate || ev.date).getTime();
-    let score = 0;
-    // Strict tiers: live (3000+) > half-time (2000+) > finished (1000+) > upcoming (negative)
-    // Within finished matches, prefer the most recent one (largest ko value)
-    // ESPN uses various status names - cover all live variants
-    const isLiveStatus = ['STATUS_IN_PROGRESS', 'STATUS_IN_PROGRESS_2', 'STATUS_SECOND_HALF',
-      'STATUS_FIRST_HALF', 'STATUS_EXTRA_TIME', 'STATUS_PENALTY'].includes(statusName);
-    const isHTStatus = statusName === 'STATUS_HALFTIME';
-    const isFTStatus = ['STATUS_FINAL', 'STATUS_FULL_TIME', 'STATUS_FT'].includes(statusName);
+  for (const m of matches) {
+    if (!m.date || !m.time) continue;
+    const ko = parseKickoff(m.date, m.time).getTime();
+    const end = ko + MATCH_DURATION;
+    const hasScore = m.score && m.score.ft;
 
-    if (isLiveStatus) score = 3000 + ko;
-    else if (isHTStatus) score = 2000 + ko;
-    else if (isFTStatus) score = 1000 + ko / 1e12;
-    else score = -(ko - now)/1000; // upcoming: higher = sooner
+    let score;
+    if (now >= ko && now <= end && !hasScore) {
+      score = 3000; // currently live (no result yet)
+    } else if (now >= ko && now <= end && hasScore) {
+      score = 2500; // live window but score already in (just finished)
+    } else if (hasScore) {
+      score = 1000 + ko / 1e13; // finished, prefer most recent
+    } else {
+      score = -(ko - now) / 1000; // upcoming, prefer soonest
+    }
 
-    debugLog('  status raw: [' + statusName + '] -> score tier: ' + (isLiveStatus?'LIVE':isHTStatus?'HT':isFTStatus?'FT':'upcoming'));
+    if (score > bestScore) { bestScore = score; best = { m, ko, score }; }
+  }
+  return best;
+}
 
-    if (score > bestScore) { bestScore = score; best = { ev, comp }; }
+// ─── Parse match into render-ready object ────────────────────────────────────
+function parseMatch(m, ko) {
+  const now = Date.now();
+  const MATCH_DURATION = 115 * 60 * 1000;
+  const HT_START = 47 * 60 * 1000;
+  const HT_END = 62 * 60 * 1000;
+
+  const elapsed = now - ko;
+  const hasResult = m.score && m.score.ft;
+  const isInWindow = elapsed >= 0 && elapsed <= MATCH_DURATION;
+
+  let isLive = false, isHT = false, isFT = false, isUpcoming = false, clock = '';
+
+  if (hasResult && elapsed > HT_END) {
+    isFT = true;
+  } else if (isInWindow && !hasResult) {
+    if (elapsed >= HT_START && elapsed <= HT_END) {
+      isHT = true;
+    } else {
+      isLive = true;
+      const mins = Math.min(90, Math.floor(elapsed / 60000));
+      clock = mins + "'";
+    }
+  } else if (!hasResult && elapsed < 0) {
+    isUpcoming = true;
+  } else if (hasResult) {
+    isFT = true;
   }
 
-  if (!best) return null;
-  const { ev, comp } = best;
-  const home = comp.competitors?.find(c=>c.homeAway==='home');
-  const away = comp.competitors?.find(c=>c.homeAway==='away');
-  const statusName = comp.status?.type?.name || '';
-  const clock = comp.status?.displayClock || '';
-  const period = comp.status?.period || 1;
+  const homeScore = hasResult ? m.score.ft[0] : 0;
+  const awayScore = hasResult ? m.score.ft[1] : 0;
 
-  // Parse goal scorers from linescores/leaders
+  // Build goals list
   const goals = [];
-  (comp.details || []).forEach(d => {
-    if (d.scoreValue > 0) {
-      goals.push({
-        minute: d.clock?.displayValue || '?',
-        name: d.athletesInvolved?.[0]?.displayName || '',
-        team: d.team?.displayName || '',
-        teamFlag: flag(d.team?.displayName || '')
-      });
-    }
-  });
+  (m.goals1 || []).forEach(g => goals.push({
+    minute: g.minute, name: g.name, team: m.team1,
+    teamFlag: flag(m.team1), owngoal: g.owngoal, penalty: g.penalty
+  }));
+  (m.goals2 || []).forEach(g => goals.push({
+    minute: g.minute, name: g.name, team: m.team2,
+    teamFlag: flag(m.team2), owngoal: g.owngoal, penalty: g.penalty
+  }));
+  goals.sort((a, b) => parseInt(a.minute) - parseInt(b.minute));
 
   return {
-    home: home?.team?.displayName || '',
-    away: away?.team?.displayName || '',
-    homeScore: parseInt(home?.score || 0),
-    awayScore: parseInt(away?.score || 0),
-    isLive: ['STATUS_IN_PROGRESS','STATUS_IN_PROGRESS_2','STATUS_SECOND_HALF',
-      'STATUS_FIRST_HALF','STATUS_EXTRA_TIME','STATUS_PENALTY'].includes(statusName),
-    isHT: statusName === 'STATUS_HALFTIME',
-    isFT: ['STATUS_FINAL','STATUS_FULL_TIME','STATUS_FT'].includes(statusName),
-    isUpcoming: ['STATUS_SCHEDULED','STATUS_PRE'].includes(statusName),
+    home: m.team1, away: m.team2,
+    homeScore, awayScore,
+    isLive, isHT, isFT, isUpcoming,
     clock,
-    period,
-    group: ev.season?.slug || '',
-    venue: comp.venue?.fullName || '',
-    kickoff: new Date(comp.startDate || ev.date),
+    group: m.group || '',
+    venue: m.ground || '',
+    kickoff: new Date(ko),
     goals,
-    source: 'espn'
+    source: 'openfootball'
   };
+}
+
+async function fetchAndParseMatch() {
+  const matches = await fetchMatches();
+  debugLog('Loaded ' + matches.length + ' matches');
+  if (!matches.length) return null;
+
+  const picked = pickMatch(matches);
+  if (!picked) return null;
+
+  const { m, ko } = picked;
+  debugLog('Picked: ' + m.team1 + ' vs ' + m.team2 + ' ko=' + new Date(ko).toISOString());
+  return parseMatch(m, ko);
 }
 
 // ─── Render ───────────────────────────────────────────────────────────────────
@@ -727,7 +736,7 @@ function renderMatch(m) {
       </div>
     </div>
     ` : ''}
-    <div class="src-badge">via ESPN · auto-refresh every 30s</div>`;
+    <div class="src-badge">via openfootball · auto-refresh every 60s</div>`;
 }
 
 // ─── Main fetch loop ──────────────────────────────────────────────────────────
@@ -735,7 +744,7 @@ async function fetchAndRender() {
   const btn = document.getElementById('rbtn');
   btn.classList.add('spin');
 
-  const m = await fetchESPN();
+  const m = await fetchAndParseMatch();
 
   if (!m) {
     document.getElementById('content').innerHTML = `
@@ -754,7 +763,7 @@ async function fetchAndRender() {
   btn.classList.remove('spin');
 
   clearInterval(autoTimer);
-  autoTimer = setInterval(fetchAndRender, 30000);
+  autoTimer = setInterval(fetchAndRender, 60000);
 }
 
 fetchAndRender();
