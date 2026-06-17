@@ -182,6 +182,11 @@ body::before{
   opacity:.6;letter-spacing:.04em;
 }
 .err{text-align:center;padding:1.5rem;color:var(--muted);font-size:14px;line-height:1.8}
+.debug-panel{margin-top:1rem;background:#0a0f1e;border:1px solid var(--border);border-radius:10px;padding:.75rem;display:none}
+.debug-panel.open{display:block}
+#debug-log{font-family:monospace;font-size:10px;color:#6b7a99;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;line-height:1.5}
+.dbtn{background:none;border:1px solid var(--border);color:var(--muted);font-size:11px;padding:3px 9px;border-radius:6px;cursor:pointer;font-family:var(--font);margin-top:.5rem}
+.dbtn:hover{border-color:var(--accent);color:var(--accent)}
 @media(max-width:400px){.flag{font-size:44px}.snum{font-size:60px}.card{padding:1.25rem}}
 </style>
 </head>
@@ -216,6 +221,9 @@ body::before{
       Refresh
     </button>
   </div>
+  <button class="dbtn" onclick="document.getElementById('dp').classList.toggle('open');this.textContent=document.getElementById('dp').classList.contains('open')?'Hide debug':'Show debug'">Show debug</button>
+  <div class="debug-panel" id="dp"><div id="debug-log">Waiting for fetch...
+</div></div>
 </div>
 
 <script>
@@ -492,25 +500,50 @@ function adjustScore(side, delta) {
 }
 
 // ─── ESPN API (works from browsers via direct fetch) ─────────────────────────
+function debugLog(msg) {
+  const el = document.getElementById('debug-log');
+  if (el) el.textContent += msg + '\n';
+  console.log('[WC]', msg);
+}
+
 async function fetchESPN() {
-  // Include today's date so ESPN returns today's matches, not a cached/previous day
-  const today = new Date();
-  const dateStr = today.getFullYear().toString()
-    + String(today.getMonth()+1).padStart(2,'0')
-    + String(today.getDate()).padStart(2,'0');
+  // Fetch without date filter so ESPN returns whatever is live/most recent.
+  // Also try a yesterday-today date range in case a match started before midnight UTC.
+  const pad = n => String(n).padStart(2,'0');
+  const fmtDate = d => d.getUTCFullYear().toString() + pad(d.getUTCMonth()+1) + pad(d.getUTCDate());
+  const todayUTC = new Date();
+  const yesterdayUTC = new Date(Date.now() - 86400000);
+  const dateRange = fmtDate(yesterdayUTC) + '-' + fmtDate(todayUTC);
+  const bust = '&t=' + Date.now();
 
   const base = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard';
-  const proxy = 'https://corsproxy.io/?' + base;
-  const params = `?dates=${dateStr}&t=${Date.now()}`;
+  const urls = [
+    base + '?limit=20' + bust,
+    base + '?dates=' + dateRange + '&limit=20' + bust,
+    'https://corsproxy.io/?' + encodeURIComponent(base + '?limit=20'),
+  ];
 
-  const urls = [base + params, proxy + encodeURIComponent('?' + `dates=${dateStr}`) + '&t=' + Date.now()];
   for (const url of urls) {
     try {
+      debugLog('Trying: ' + url.substring(0, 90));
       const r = await fetch(url, {cache:'no-store'});
-      if (!r.ok) continue;
+      if (!r.ok) { debugLog('HTTP ' + r.status); continue; }
       const data = await r.json();
-      return parseESPN(data);
-    } catch(e) { continue; }
+      const events = data.events || [];
+      debugLog('Got ' + events.length + ' events');
+      events.forEach(ev => {
+        const comp = ev.competitions?.[0];
+        const status = comp?.status?.type?.name || '?';
+        const home = comp?.competitors?.find(c=>c.homeAway==='home')?.team?.displayName || '?';
+        const away = comp?.competitors?.find(c=>c.homeAway==='away')?.team?.displayName || '?';
+        const hs = comp?.competitors?.find(c=>c.homeAway==='home')?.score || 0;
+        const as = comp?.competitors?.find(c=>c.homeAway==='away')?.score || 0;
+        debugLog('  ' + home + ' ' + hs + '-' + as + ' ' + away + ' [' + status + ']');
+      });
+      const parsed = parseESPN(data);
+      if (parsed) debugLog('Selected: ' + parsed.home + ' vs ' + parsed.away + ' [live:' + parsed.isLive + ']');
+      return parsed;
+    } catch(e) { debugLog('Error: ' + e.message); continue; }
   }
   return null;
 }
