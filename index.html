@@ -121,30 +121,35 @@ body::before{
 #confetti{position:fixed;inset:0;pointer-events:none;z-index:99}
 .overlay{
   position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
-  pointer-events:none;z-index:100;opacity:0;
+  pointer-events:none;z-index:100;
+  /* background and opacity driven purely by JS so reruns always work */
+  opacity:0;background:transparent;transition:none;
 }
-.overlay.show{animation:ovl 10s ease-out forwards}
-@keyframes ovl{0%{opacity:0}4%{opacity:1}80%{opacity:1}100%{opacity:0}}
-.overlay-bg{position:absolute;inset:0;opacity:0;}
-.overlay.show .overlay-bg{animation:bgflash 10s forwards}
+.overlay-bg{
+  position:absolute;inset:0;
+  animation:none;
+}
+.overlay-bg.run{animation:bgflash 10s forwards}
 @keyframes bgflash{
   0%  {opacity:0}
-  3%  {opacity:0.55}
-  8%  {opacity:0.28}
-  15% {opacity:0.42}
-  22% {opacity:0.22}
-  30% {opacity:0.38}
-  40% {opacity:0.2}
-  52% {opacity:0.32}
-  65% {opacity:0.15}
-  80% {opacity:0.08}
+  3%  {opacity:0.75}
+  8%  {opacity:0.45}
+  14% {opacity:0.65}
+  20% {opacity:0.38}
+  28% {opacity:0.58}
+  36% {opacity:0.32}
+  46% {opacity:0.5}
+  58% {opacity:0.25}
+  72% {opacity:0.38}
+  84% {opacity:0.15}
   100%{opacity:0}
 }
 .goal-shout{
   position:relative;z-index:1;
   display:flex;flex-direction:column;align-items:center;gap:.75rem;
-  animation:shout 10s ease-out forwards;text-align:center;
+  text-align:center;
 }
+.goal-shout.run{animation:shout 10s ease-out forwards}
 @keyframes shout{
   0%  {transform:scale(.3) rotate(-8deg);opacity:0}
   6%  {transform:scale(1.15) rotate(2deg);opacity:1}
@@ -152,21 +157,24 @@ body::before{
   80% {transform:scale(1);opacity:1}
   100%{transform:scale(1.04);opacity:0}
 }
+.overlay.run{animation:ovlfade 10s ease-out forwards}
+@keyframes ovlfade{0%{opacity:0}4%{opacity:1}80%{opacity:1}100%{opacity:0}}
 .goal-word{
   font-size:100px;font-weight:900;letter-spacing:-3px;color:#22c55e;
-  text-shadow:0 0 60px currentColor,0 4px 20px rgba(0,0,0,.5);
-  animation:gcolor 10s forwards;
+  text-shadow:0 0 60px #22c55e,0 4px 20px rgba(0,0,0,.5);
 }
+.goal-word.run{animation:gcolor 10s forwards}
 @keyframes gcolor{
-  0%  {color:#22c55e}
-  18% {color:#fff}
-  36% {color:#22c55e}
-  54% {color:#fff}
-  72% {color:#22c55e}
-  100%{color:#22c55e}
+  0%  {color:#fff}
+  15% {color:#22c55e}
+  30% {color:#fff}
+  48% {color:#22c55e}
+  65% {color:#fff}
+  82% {color:#22c55e}
+  100%{color:#fff}
 }
-.goal-who{font-size:22px;font-weight:600;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.6)}
-.goal-minute{font-size:14px;font-weight:500;color:rgba(255,255,255,.7);margin-top:-.25rem}
+.goal-who{font-size:22px;font-weight:600;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.8)}
+.goal-minute{font-size:14px;font-weight:500;color:rgba(255,255,255,.75);margin-top:-.25rem}
 .src-badge{
   font-size:10px;color:var(--muted);text-align:center;margin-top:.4rem;
   opacity:.6;letter-spacing:.04em;
@@ -399,19 +407,39 @@ function confetti(teamColor) {
 }
 
 // ─── Goal celebration ─────────────────────────────────────────────────────────
+let celebrateTimer = null;
 function celebrate(teamName, rawName) {
   const color = teamColor(rawName || teamName);
+
+  // Clear any running timer
+  if (celebrateTimer) { clearTimeout(celebrateTimer); celebrateTimer = null; }
+
+  // Update text content
   document.getElementById('goalWho').textContent = teamName;
   document.getElementById('goalMinute').textContent = '';
-  // Set country color on the background
+
+  // Set full background color
   const bg = document.getElementById('overlayBg');
-  bg.style.background = `radial-gradient(ellipse at center, ${color} 0%, ${color}88 40%, transparent 75%)`;
-  // Also tint the goal word to match
-  document.querySelector('.goal-word').style.textShadow = `0 0 60px ${color}, 0 4px 20px rgba(0,0,0,.5)`;
-  const ov = document.getElementById('overlay');
-  ov.className = 'overlay'; void ov.offsetWidth; ov.className = 'overlay show';
-  setTimeout(() => ov.className = 'overlay', 10200);
-  cheer(); confetti(color);
+  bg.style.backgroundColor = color;
+
+  // Force-restart every animation by stripping then re-adding .run
+  const ov  = document.getElementById('overlay');
+  const shout = document.querySelector('.goal-shout');
+  const word  = document.querySelector('.goal-word');
+
+  [ov, bg, shout, word].forEach(el => { el.classList.remove('run'); void el.offsetWidth; });
+  [ov, bg, shout, word].forEach(el => el.classList.add('run'));
+
+  // Show overlay (set opacity via class above), hide after 10.2s
+  ov.style.opacity = '';  // let animation handle it
+  celebrateTimer = setTimeout(() => {
+    [ov, bg, shout, word].forEach(el => el.classList.remove('run'));
+    ov.style.opacity = '0';
+    celebrateTimer = null;
+  }, 10300);
+
+  cheer();
+  confetti(color);
 }
 
 // ─── Bump animation ──────────────────────────────────────────────────────────
