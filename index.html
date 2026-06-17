@@ -662,6 +662,38 @@ function parseMatch(m, ko) {
   };
 }
 
+async function fetchLiveScoreFromClaude(team1, team2) {
+  try {
+    const prompt = `What is the current live score of ${team1} vs ${team2} at the 2026 FIFA World Cup right now? Reply with ONLY a JSON object like: {"home": 2, "away": 1, "status": "live", "clock": "67'", "goals": [{"minute": "12", "name": "Kane", "team": "${team1}"}, {"minute": "34", "name": "Baturina", "team": "${team2}"}]}. If the match hasn't started yet use status "upcoming". If finished use status "ft". Use the web search tool to get the latest score.`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    const data = await response.json();
+    const text = data.content?.filter(b => b.type === 'text').map(b => b.text).join('');
+    debugLog('Claude response: ' + text?.substring(0, 200));
+
+    // Parse JSON from response
+    const match = text?.match(/\{[\s\S]*\}/);
+    if (match) {
+      const parsed = JSON.parse(match[0]);
+      debugLog('Claude score: ' + parsed.home + '-' + parsed.away + ' [' + parsed.status + ']');
+      return parsed;
+    }
+  } catch(e) {
+    debugLog('Claude fetch error: ' + e.message);
+  }
+  return null;
+}
+
 async function fetchAndParseMatch() {
   const matches = await fetchMatches();
   debugLog('Loaded ' + matches.length + ' matches');
@@ -671,19 +703,25 @@ async function fetchAndParseMatch() {
   if (!picked) return null;
 
   const { m, ko, idx } = picked;
-  debugLog('Picked: ' + m.team1 + ' vs ' + m.team2 + ' ko=' + new Date(ko).toISOString() + ' idx=' + idx);
+  debugLog('Picked: ' + m.team1 + ' vs ' + m.team2 + ' ko=' + new Date(ko).toISOString());
 
   const result = parseMatch(m, ko);
 
-  // If match is live or recently finished, try ESPN summary for real-time score
+  // For live/HT/recently finished matches, use Claude with web search for real score
   if (result.isLive || result.isHT || result.isFT) {
-    const espn = await fetchESPNSummary(idx);
-    if (espn) {
-      result.homeScore = espn.homeScore;
-      result.awayScore = espn.awayScore;
-      if (espn.clock) result.clock = espn.clock;
-      if (espn.goals && espn.goals.length) result.goals = espn.goals;
-      debugLog('ESPN scores applied: ' + espn.homeScore + '-' + espn.awayScore);
+    const live = await fetchLiveScoreFromClaude(m.team1, m.team2);
+    if (live) {
+      result.homeScore = live.home ?? result.homeScore;
+      result.awayScore = live.away ?? result.awayScore;
+      if (live.clock) result.clock = live.clock;
+      if (live.status === 'ft') { result.isFT = true; result.isLive = false; result.isHT = false; }
+      if (live.status === 'ht') { result.isHT = true; result.isLive = false; result.isFT = false; }
+      if (live.goals && live.goals.length) {
+        result.goals = live.goals.map(g => ({
+          minute: g.minute, name: g.name, team: g.team,
+          teamFlag: flag(g.team)
+        }));
+      }
     }
   }
 
@@ -792,7 +830,7 @@ function renderMatch(m) {
       </div>
     </div>
     ` : ''}
-    <div class="src-badge">via openfootball · auto-refresh every 60s</div>`;
+    <div class="src-badge">Live score via web search · auto-refresh every 90s</div>`;
 }
 
 // ─── Main fetch loop ──────────────────────────────────────────────────────────
@@ -819,7 +857,7 @@ async function fetchAndRender() {
   btn.classList.remove('spin');
 
   clearInterval(autoTimer);
-  autoTimer = setInterval(fetchAndRender, 60000);
+  autoTimer = setInterval(fetchAndRender, 90000);
 }
 
 fetchAndRender();
